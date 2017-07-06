@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+  <title>StreamLayer-Filtering-4</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.4/esri/css/main.css">
+  <style type="text/css">
+    html, body {
+      height: 100%; width: 100%;
+      margin: 0; padding: 0;
+      overflow: hidden;
+    }
+
+    .banner {
+      margin-top: 5px;
+      margin-bottom: 5px;
+      color: #000080;
+      font-size: 2em;
+      font-weight: bold;
+    }
+
+    #mapDiv {
+      width: 100%;
+      height: 55%;
+    }
+
+    .layer-controls {
+      margin-left: 10px;
+      margin-top: 10px;
+    }
+
+    .url {
+      width: 700px;
+      padding: 4px;
+      font-size: 0.75em;
+      font-weight: 300;
+      border-style: solid;
+      border-width: thin;
+      background-color: #dcdcdc;
+    }
+    .connected {
+      /*background-color: #008000;*/
+      border-color: #008000;
+      color: #008000;
+    }
+
+    .disconnected {
+      border-color: #800010;
+      color: #800010;
+    }
+
+    .label1 {
+      font-size: 1.25em;
+      margin-bottom: 5px;
+    }
+
+    .label2 {
+      font-size: 1em;
+      margin-bottom: 5px;
+      background-color: #dcdcdc;
+    }
+
+    .bottom-container {
+      display: flex;
+      flex-direction: row;
+      margin-left: 10px;
+      margin-top: 5px;
+    }
+
+    .control {
+      height:100px;
+      padding: 5px;
+      margin-right: 10px;
+      border-color: #000000;
+      border-style: solid;
+      border-width: thin;
+    }
+
+    .attribute-filter-container {
+      display: flex;
+      flex-direction: row;
+      width: 45%;
+    }
+
+    .attribute-filter-results {
+      margin-left: 10px;
+      border-left-style: solid;
+      border-left-color: #dcdcdc;
+      border-left-width: thin;
+      padding-left: 10px;
+    }
+
+    .spatial-filter {
+      width: 25%;
+    }
+
+    #txtWhere {
+      width: 300px;
+    }
+
+  </style>
+  <script>
+    var basepath = location.pathname.replace(/\/[^/]+$/, "");
+    var dojoConfig = {
+      async: true,
+      paths: {
+        "4.x": basepath
+      }
+    }
+  </script>
+  <script src="https://js.arcgis.com/4.4/"></script>
+</head>
+<body>
+  <div class="banner">
+    Stream Layer: Filtering with the 4 API
+  </div>
+  <div id="mapDiv"></div>
+  <div class="layer-controls">
+    <div class="label1">Stream Layer Url</div>
+    <input type="text" id="txtUrl" class="url disconnected">
+    <button id="toggle-layer-button">Add Stream Layer</button>
+  </div>
+
+  <div class="bottom-container">
+    <div class="control spatial-filter">
+      <div class="label2">Draw extent to filter messages by a bounding box</div>
+      <button data-spatial-action="add">Draw Extent</button>
+      <button data-spatial-action="clear">Clear Extent</button>
+    </div>
+    <div class="control attribute-filter-container">
+      <div>
+        <div class="label2">Enter Where Clause</div>
+        <p>
+          <input type="text" id="txtWhere" value="AltitudeFeet < 30000">
+        </p>
+        <button data-where-action="add">Apply Where</button>
+        <button data-where-action="clear">Clear Where</button>
+      </div>
+      <div class="attribute-filter-results">
+        <div class="label2">Attribute Filter Status</div>
+        <p>
+          <span>Current Filter: </span><span id="current-filter"></span>
+        </p>
+        <p>
+          <span>Filter Message: </span>
+          <span id="filter-status" class="connected"></span>
+        </p>
+      </div>
+    </div>
+
+  </div>
+</body>
+<script>
+  require([
+    "esri/Map",
+    "esri/views/MapView",
+    
+    "esri/layers/StreamLayer",
+
+    "esri/PopupTemplate",
+
+    "esri/Graphic",
+
+    "esri/symbols/SimpleFillSymbol",
+    "esri/symbols/SimpleLineSymbol",
+
+    "4.x/support/DrawTools",
+    
+    "dojo/on",
+    "dojo/dom",
+    "dojo/dom-class",
+    "dojo/query",
+    "dojo/domReady!"
+  ], function
+    (
+      Map, MapView,
+      StreamLayer,
+      PopupTemplate, 
+      Graphic, 
+      SimpleFillSymbol, SimpleLineSymbol,
+      DrawTools,
+      on, dom, domClass, query) {
+
+    var attributeFilter = null;
+    var spatialFilter = null;
+
+    var url = "http://ec2-75-101-155-202.compute-1.amazonaws.com:6080/arcgis/rest/services/ASDITrackInformation/StreamServer";
+
+    var bboxSymbol = new SimpleFillSymbol({
+      style: "none",
+      outline: {
+        color: "#ff0000",
+        style: "solid",
+        width: "1px"
+      }
+    });
+    var streamLayer,
+      streamLayerView,
+      drawTools;
+
+    var map = new Map({
+      basemap: "gray"
+    });
+
+    var mapView = new MapView({
+      container: "mapDiv",
+      map: map,
+      center: [-90, 40],
+      zoom: 3
+    });
+
+    mapView
+      .then(function(response) {
+        drawTools = new DrawTools({
+          view: mapView,
+          showTooltips: true
+        });
+      });
+
+    var template = {
+      title: "Flight ID: {FltId",
+      content: "Altitude (Feet): {AltitudeFeet}"
+    };
+
+    dom.byId("txtUrl").value = url;
+
+    //connect click events to UI buttons
+    on(dom.byId("toggle-layer-button"), "click", toggleStreamLayer);
+
+    on(query("[data-spatial-action]"), "click", handleSpatialClick);
+    on(query("[data-where-action]"), "click", handleWhereClick);
+
+    /**********************************************************************************************
+     *
+     * Functions to add and remove Stream Layer
+     *
+     **********************************************************************************************/
+    function toggleStreamLayer() {
+      if (streamLayer) {
+        removeStreamLayer();
+      }
+      else {
+        addStreamLayer();
+      }
+    }
+
+    function addStreamLayer() {
+      //url to stream service
+      var svcUrl = dom.byId("txtUrl").value;
+
+      var layerProps = {
+        url: svcUrl,
+        purgeOptions: {
+          displayCount: 10000
+        },
+        popupTemplate: template
+      };
+
+      if (attributeFilter || spatialFilter) {
+        layerProps.filter = {
+          geometry: spatialFilter,
+          where: attributeFilter
+        };
+      }
+
+      //construct Stream Layer
+      streamLayer = new StreamLayer(layerProps);
+
+      map.add(streamLayer);
+
+      mapView.whenLayerView(streamLayer)
+        .then(function(layerView) {
+          streamLayerView = layerView;
+          layerView.watch("connectionStatus", handleConnectionStatus);
+        })
+        .otherwise(function(err) {
+          console.log("Error adding stream layer", err);
+        });
+    }
+
+    function removeStreamLayer() {
+      if (streamLayer) {
+        map.remove(streamLayer);
+
+        streamLayer = null;
+        streamLayerView = null;
+
+        handleConnectionStatus("disconnected");
+      }
+    }
+
+    /*********************************************************
+     *
+     * Stream layer event handlers
+     *
+     *********************************************************/
+
+    function handleConnectionStatus(status) {
+      var connected = (status === "connected");
+
+      if (connected && streamLayerView.filter.where) {
+        dom.byId("current-filter").innerHTML = streamLayerView.filter.where;
+      }
+
+      var classToAdd = connected ? "connected" :
+        "disconnected";
+
+      var classToRemove = connected ? "disconnected" :
+        "connected";
+
+      var toggleLayerText = connected ? "Remove Layer" :
+        "Add Stream Layer";
+
+      domClass.replace("txtUrl", classToAdd, classToRemove);
+
+      dom.byId("toggle-layer-button").innerHTML = toggleLayerText;
+    }
+
+    /*********************************************************
+     *
+     * Filtering
+     *
+     *********************************************************/
+    function handleWhereClick(evt) {
+      var action = evt.target.getAttribute("data-where-action");
+      var newVal;
+
+      if (action === "add") {
+        newVal = dom.byId("txtWhere").value;
+      }
+      else {
+        newVal = null;
+      }
+
+      updateWhere(newVal);
+    }
+
+    function handleSpatialClick(evt) {
+      var action = evt.target.getAttribute("data-spatial-action");
+
+      if (action === "add") {
+        drawTools.activate("extent");
+
+        var drawEndHandler = drawTools.on("draw-complete", function(e) {
+          var bbox = e.geometry;
+
+          mapView.graphics.add(new Graphic({
+            symbol: bboxSymbol,
+            geometry: bbox
+          }));
+
+          drawTools.deactivate();
+          drawEndHandler.remove();
+
+          updateGeometry(bbox);
+        });
+      }
+      else {
+        mapView.graphics.removeAll();
+        updateGeometry(null);
+      }
+    }
+
+    //-----------------------
+    // Attribute Filter
+    //-----------------------
+
+    function updateWhere(value) {
+      if (!streamLayer) {
+        attributeFilter = value;
+      }
+      else {
+        dom.byId("filter-status").innerHTML = "";
+        streamLayerView.updateFilter({
+          where: value
+        })
+          .then(function(response) {
+            streamLayerView.graphics.removeAll();
+
+            attributeFilter = response.filter.where;
+            dom.byId("current-filter").innerHTML = response.filter.where;
+
+            var statusDiv = dom.byId("filter-status");
+
+            domClass.remove(statusDiv, "disconnected");
+            domClass.add(statusDiv, "connected");
+            statusDiv.innerHTML = "Filter updated";
+          })
+          .otherwise(function(err) {
+            console.log("filter error: ", err.message);
+
+            var statusDiv = dom.byId("filter-status");
+
+            domClass.remove(statusDiv, "connected");
+            domClass.add(statusDiv, "disconnected");
+            statusDiv.innerHTML = err.message;
+          });
+      }
+    }
+
+    //-----------------------
+    // Spatial Filter
+    //-----------------------
+
+    function updateGeometry(extent) {
+      if (!streamLayer) {
+        spatialFilter = extent;
+      }
+      else {
+        streamLayerView.updateFilter({
+          geometry: extent
+        })
+          .then(function(response) {
+            streamLayerView.graphics.removeAll();
+          })
+      }
+    }
+
+
+  });
+</script>
+</html>

@@ -65,8 +65,7 @@
                   SimpleRenderer, PointSymbol3D, IconSymbol3DLayer,
                   on, dom, domClass){
 
-        var slayer,
-            controller;
+        var slayer;
 
         dom.byId("txtUrl").value = "http://ec2-75-101-155-202.compute-1.amazonaws.com:6080/arcgis/rest/services/WorldSatellites/StreamServer";
 
@@ -83,14 +82,8 @@
         on(dom.byId("cmdRemove"), "click", removeLayer);
 
         function connect(){
-          if(slayer){
-            console.log("layer exists. just reconnecting");
-            slayer.connect();
-            return;
-          }
-
           //Create the PopupTemplate
-          var template = new PopupTemplate({
+          var template = {
             title: "Name: {SatelliteName}",
             content: "Altitude: {AltitudeMeters}<br>Inclination: {Inclination}",
             fieldInfos: [{
@@ -106,7 +99,7 @@
                 digitSeparator: true,
                 places: 2
               }
-            }]});
+            }]};
 
           // Create iconSymbol and add to renderer
           var iconSymbol = new PointSymbol3D({
@@ -134,42 +127,37 @@
             renderer: objectSymbolRenderer
           });
 
-          slayer.then(null, function(err){
-            console.log("layer error: ", err);
-          });
-
-          // Get controller when it is created.
-          //  Controller emits connect/disconnect events
-          slayer.on("graphics-controller-create", function(evt){
-            controller = evt.graphicsController;
-            controller.on("connect", function(){
-              domClass.replace("txtUrl", "connected", "disconnected");
-              dom.byId("cmdConnect").disabled = true;
-              dom.byId("cmdRemove").disabled = false;
-            });
-            controller.on("disconnect", function(evt){
-              domClass.replace("txtUrl", "disconnected", "connected");
-              dom.byId("cmdConnect").disabled = false;
-              dom.byId("cmdRemove").disabled = true;
-            });
-          });
-
           map.add(slayer);
-        }
 
-        function disconnect(){
-          if(controller) {
-            controller.disconnect();
-          }
+          sceneView.whenLayerView(slayer)
+            .then(function(layerView) {
+              layerView.watch("connectionStatus", handleConnectionStatus);
+            });
         }
 
         function removeLayer(){
-          if(controller){
-            controller.disconnect();
+          if (slayer) {
             map.remove(slayer);
             slayer = null;
-            controller = null;
+            handleConnectionStatus("disconnected");
           }
+        }
+
+        function handleConnectionStatus(status) {
+          var connected = status === "connected";
+          var classToAdd = "connected";
+          var classToRemove = "disconnected";
+
+          if (!connected) {
+            classToAdd = "disconnected";
+            classToRemove = "connected"
+          }
+
+          domClass.replace("txtUrl", classToAdd, classToRemove);
+
+          dom.byId("cmdConnect").disabled = connected;
+          dom.byId("cmdRemove").disabled = !connected;
+
         }
       });
     </script>

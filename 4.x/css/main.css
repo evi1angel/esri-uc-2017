@@ -5,8 +5,8 @@ html, body {
 }
 
 .banner {
-  margin-top: 5px;
-  margin-bottom: 5px;
+  /*margin-top: 5px;
+  margin-bottom: 5px;*/
   color: #000080;
   font-size: 2em;
   font-weight: bold;
@@ -18,8 +18,12 @@ html, body {
 }
 
 .map-large {
-  height: 85%;
+  height: 80%;
   width: 100%;
+}
+
+.padded-container {
+  padding: 10px;
 }
 
 .layer-controls {
@@ -37,7 +41,6 @@ html, body {
   background-color: #dcdcdc;
 }
 .connected {
-  /*background-color: #008000;*/
   border-color: #008000;
   color: #008000;
 }
@@ -50,6 +53,8 @@ html, body {
 .label1 {
   font-size: 1.25em;
   margin-bottom: 5px;
+  margin-left: 5px;
+  margin-top: 5px;
 }
 
 .label2 {
